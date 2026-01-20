@@ -9,6 +9,14 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'FlashTip Betting Bot Backend 🚀',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Health check (imaš)
 app.get('/health', async (_req, res) => {
   try {
