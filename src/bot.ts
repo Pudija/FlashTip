@@ -27,7 +27,7 @@ if (!ADMIN_ID) {
   );
 }
 
-export const bot = new TelegramBot(token, { polling: false });
+export const bot = new TelegramBot(token, { polling: true });
 
 
 // Global state for admin input
