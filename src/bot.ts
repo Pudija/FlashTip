@@ -4,7 +4,6 @@ import { pool } from "./db";
 
 dotenv.config();
 
-
 // Global state za admin navigaciju
 let adminPendingUsersState: { messageId: number; chatId: number } | null = null;
 let tipstersListState: {
@@ -28,7 +27,6 @@ if (!ADMIN_ID) {
 }
 
 export const bot = new TelegramBot(token, { polling: true });
-
 
 // Global state for admin input
 let adminCreditInput: {
@@ -379,7 +377,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
 
   const userRes = await pool.query(
     "SELECT id, role, status FROM bettingbot.users WHERE telegramid = $1",
-    [telegramId]
+    [telegramId],
   );
 
   if (userRes.rows.length === 0) {
@@ -388,22 +386,28 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
 
   const user = userRes.rows[0];
   if (user.status !== "APPROVED" || user.role !== "TIPSTER") {
-    return bot.sendMessage(chatId, "You do not have permission to publish tips.");
+    return bot.sendMessage(
+      chatId,
+      "You do not have permission to publish tips.",
+    );
   }
 
   const payload = match?.[1];
   if (!payload) {
     return bot.sendMessage(
       chatId,
-      "Wrong format. Use: newtip BookingCode odds stake"
+      "Wrong format. Use: newtip BookingCode odds stake",
     );
   }
 
-  const parts = payload.split(" ").map(p => p.trim()).filter(p => p.length > 0);
+  const parts = payload
+    .split(" ")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
   if (parts.length !== 3) {
     return bot.sendMessage(
       chatId,
-      "Wrong format. You need 3 fields: BookingCode odds stake"
+      "Wrong format. You need 3 fields: BookingCode odds stake",
     );
   }
 
@@ -413,7 +417,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
   if (bookingCode?.length !== 7) {
     return bot.sendMessage(
       chatId,
-      "❌ Booking code must have exactly 7 characters."
+      "❌ Booking code must have exactly 7 characters.",
     );
   }
 
@@ -427,21 +431,21 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
   if (!Number.isFinite(odds) || !Number.isFinite(recommendedStake)) {
     return bot.sendMessage(
       chatId,
-      "❌ Odds and stake must be valid numbers (decimals allowed, e.g. 2.10, 100.50)"
+      "❌ Odds and stake must be valid numbers (decimals allowed, e.g. 2.10, 100.50)",
     );
   }
 
   if (odds <= 1 || recommendedStake <= 0) {
     return bot.sendMessage(
       chatId,
-      "❌ Odds must be > 1 and stake must be > 0."
+      "❌ Odds must be > 1 and stake must be > 0.",
     );
   }
 
   // Provjera balansa
   const tipsterWallet = await pool.query(
     "SELECT balance FROM bettingbot.wallets WHERE userid = $1",
-    [user.id]
+    [user.id],
   );
 
   if (
@@ -450,7 +454,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
   ) {
     return bot.sendMessage(
       chatId,
-      "❌ You don't have enough balance to cover recommended stake."
+      "❌ You don't have enough balance to cover recommended stake.",
     );
   }
 
@@ -458,7 +462,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
     `INSERT INTO bettingbot.tips (tipsterid, bookingcode, odds, recommendedstake, status)
      VALUES ($1, $2, $3, $4, 'OPEN')
      RETURNING id`,
-    [user.id, bookingCode, odds, recommendedStake]
+    [user.id, bookingCode, odds, recommendedStake],
   );
 
   const tipId = insert.rows[0].id;
@@ -466,7 +470,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
   await bot.sendMessage(
     chatId,
     `✅ Tip ${tipId} created!\n📝 Booking: \`${bookingCode}\`\n🎯 Odds: ${odds}\n💰 Recommended stake: ${recommendedStake}`,
-    { parse_mode: "Markdown" }
+    { parse_mode: "Markdown" },
   );
 
   // Send to subscribers (WHO HAVE ENOUGH BALANCE) - 3-min timeout notification
@@ -476,7 +480,7 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
      JOIN bettingbot.users u ON u.id = ts.userid 
      JOIN bettingbot.wallets w ON w.userid = u.id 
      WHERE ts.tipsterid = $1 AND u.status = 'APPROVED' AND w.balance >= $2`,
-    [user.id, recommendedStake]
+    [user.id, recommendedStake],
   );
 
   const tipText = `🆕 *New tip ${tipId}*\n📝 Booking Code: \`${bookingCode}\`\n🎯 Odds: ${odds}\n💰 Recommendation: ${recommendedStake}\n⏰ Expires in 3 minutes!`;
@@ -485,27 +489,28 @@ bot.onText(/newtip (.+)/, async (msg, match) => {
     const subChatId = row.telegramid as number;
     // Send notification immediately (3-min logic handled by frontend or manual close)
     try {
-      await bot.sendMessage(
-        subChatId,
-        tipText,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "✅ I played the tip", callback_data: `CONFIRMBET:${tipId}:${recommendedStake}` },
-                { text: "❌ I don't want to play", callback_data: `SKIPBET:${tipId}` }
-              ]
-            ]
-          }
-        }
-      );
+      await bot.sendMessage(subChatId, tipText, {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ I played the tip",
+                callback_data: `CONFIRMBET:${tipId}:${recommendedStake}`,
+              },
+              {
+                text: "❌ I don't want to play",
+                callback_data: `SKIPBET:${tipId}`,
+              },
+            ],
+          ],
+        },
+      });
     } catch (e) {
       console.error("Failed to send tip notification", e);
     }
   }
 });
-
 
 // 🔥 KOMPLETAN POPRAVLJEN NUMERIC HANDLER (STAVI GA POSLIJE SVIH DRUGIH HANDLERA)
 bot.onText(/^\d+$/, async (msg) => {
@@ -584,34 +589,43 @@ bot.onText(/^\d+$/, async (msg) => {
     if (adminCreditInput.action === "REMOVE" && newBalance < 0) {
       await bot.sendMessage(chatId, "⚠️ Balance went negative!");
     }
-    // Vraća na pending users listu nakon unosa kredita
-    if (adminPendingUsersState && adminPendingUsersState.chatId === chatId) {
-      try {
-        const result = await pool.query(
-          `SELECT id, username, telegram_id FROM betting_bot.users WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT 20`,
-        );
+    try {
+      const result = await pool.query(
+        "SELECT id, username, telegram_id FROM betting_bot.users WHERE status = $1 ORDER BY created_at ASC LIMIT 20",
+        ["PENDING"],
+      );
 
+      if (result.rows.length > 0) {
         let keyboard: any[][] = [];
         for (const row of result.rows) {
           const displayName = row.username ?? `ID ${row.telegram_id}`;
           keyboard.push([
-            { text: displayName, callback_data: `PENDINGSHOW:${row.id}` },
+            { text: displayName, callback_data: `PENDING_SHOW:${row.id}` },
           ]);
         }
-
         const messageText = `Pending users (${result.rows.length})`;
 
-        await bot.editMessageText(messageText, {
-          chat_id: chatId,
-          message_id: adminPendingUsersState.messageId!,
+        const message = await bot.sendMessage(chatId, messageText, {
           parse_mode: "Markdown",
           reply_markup: { inline_keyboard: keyboard },
         });
-      } catch (e: any) {
-        if (!e.message?.includes("message is not modified")) {
-          console.error("Failed to refresh pending users list:", e);
-        }
+
+        // UPDATE state sa NOVOM message ID-om (ne resetiraj na 0!)
+        adminPendingUsersState = { messageId: message.message_id!, chatId };
+
+        console.log("Nova pending lista poslana nakon kredita!");
+      } else {
+        await bot.sendMessage(chatId, "No users waiting for approval.", {
+          parse_mode: "Markdown",
+        });
+        // Ako nema korisnika, ostavi state ili resetiraj
+        adminPendingUsersState = {
+          messageId: 0 as number,
+          chatId: 0 as number,
+        };
       }
+    } catch (listError) {
+      console.error("Greška pri slanju pending liste:", listError);
     }
 
     // Auto back - bez edit ako je ista poruka
@@ -1504,6 +1518,7 @@ bot.on("callback_query", async (query) => {
     await bot.answerCallbackQuery(query.id, {
       text: `✅ ${newRole}! Send credits amount ➡️`,
     });
+
     return;
   }
 
@@ -1552,6 +1567,7 @@ bot.on("callback_query", async (query) => {
         ],
       },
     });
+
     await bot.answerCallbackQuery(query.id, { text: `Selected ${name}` });
     return;
   }
